@@ -1,3 +1,18 @@
 spring:
   application:
     name: demo
+# Database Configuration - PG* vars are injected by Railway's Postgres plugin in production;
+# defaults below keep local `./gradlew bootRun` working unchanged.
+  datasource:
+    url: jdbc:postgresql://${PGHOST:localhost}:${PGPORT:5432}/${PGDATABASE:postgres}
+    username: ${PGUSER:vaibhavkohli}
+    password: ${PGPASSWORD:}
+    driver-class-name: org.postgresql.Driver
+
+# Liquibase
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.xml
+
+# Railway assigns the listen port via $PORT; defaults to 8080 locally.
+server:
+  port: ${PORT:8080}

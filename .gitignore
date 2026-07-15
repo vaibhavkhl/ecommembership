@@ -35,3 +35,7 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Frontend build output copied into backend static resources at deploy time ###
+src/main/resources/static/*
+!src/main/resources/static/.gitkeep

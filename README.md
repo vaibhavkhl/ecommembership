@@ -76,6 +76,18 @@ Starts on `http://localhost:8080`. Liquibase applies the schema and seed data au
 | PATCH | `/api/users/{userId}/subscription` | Upgrade/downgrade tier and/or switch plan |
 | DELETE | `/api/users/{userId}/subscription` | Cancel (access continues until `endDate`) |
 
+**Admin** (configure the benefit catalog and tier auto-qualification rules)
+| Method | URL | Description |
+|---|---|---|
+| GET | `/api/admin/benefit-definitions` | List benefit types |
+| POST | `/api/admin/benefit-definitions` | Create a new benefit type (`code`, `description`) — `code` is free-form, not a fixed enum |
+| GET | `/api/admin/tier-benefits` | List which tiers grant which benefits, with config |
+| POST | `/api/admin/tier-benefits` | Assign a benefit to a tier (`tierId`, `benefitId`, `configValue` — e.g. `"10"` for a 10% discount) |
+| PUT | `/api/admin/tier-benefits/{id}` | Update a tier-benefit's config value / active flag |
+| GET | `/api/admin/tier-criteria` | List tier auto-qualification rules |
+| POST | `/api/admin/tier-criteria` | Create a rule (`tierId`, `criteriaType` — free-form, e.g. `MIN_ORDER_COUNT` — `configValue`) |
+| PUT | `/api/admin/tier-criteria/{id}` | Update a rule's config value / active flag |
+
 ## Membership Domain — Core Entities
 
 Schema lives in [`src/main/resources/db/changelog/changes/001-create-membership-schema.sql`](src/main/resources/db/changelog/changes/001-create-membership-schema.sql), seed data in [`002-seed-membership-data.sql`](src/main/resources/db/changelog/changes/002-seed-membership-data.sql), both applied via Liquibase.
@@ -87,16 +99,14 @@ Schema lives in [`src/main/resources/db/changelog/changes/001-create-membership-
 | `PlanCode` | [`membership/plan/PlanCode.java`](src/main/java/com/example/demo/membership/plan/PlanCode.java) | Enum of supported plan cadences: `MONTHLY`, `QUARTERLY`, `YEARLY`. |
 | `MembershipTier` | [`membership/tier/MembershipTier.java`](src/main/java/com/example/demo/membership/tier/MembershipTier.java) | A benefit level (Silver/Gold/Platinum) with a numeric `rank` for upgrade/downgrade comparisons. |
 | `TierCode` | [`membership/tier/TierCode.java`](src/main/java/com/example/demo/membership/tier/TierCode.java) | Enum of supported tiers: `SILVER`, `GOLD`, `PLATINUM`. |
-| `TierCriteria` | [`membership/tier/TierCriteria.java`](src/main/java/com/example/demo/membership/tier/TierCriteria.java) | A configurable rule (order count, monthly order value, cohort) a user must meet to auto-qualify for a tier. |
-| `CriteriaType` | [`membership/tier/CriteriaType.java`](src/main/java/com/example/demo/membership/tier/CriteriaType.java) | Enum of rule kinds a `TierCriteria` row can express: `MIN_ORDER_COUNT`, `MIN_ORDER_VALUE_MONTHLY`, `COHORT`. |
+| `TierCriteria` | [`membership/tier/TierCriteria.java`](src/main/java/com/example/demo/membership/tier/TierCriteria.java) | A configurable rule a user must meet to auto-qualify for a tier. `criteriaType` is a free-form string (e.g. `MIN_ORDER_COUNT`, `MIN_ORDER_VALUE_MONTHLY`, `COHORT`, or any admin-defined rule name), not a fixed enum. |
 | `PlanTierPricing` | [`membership/pricing/PlanTierPricing.java`](src/main/java/com/example/demo/membership/pricing/PlanTierPricing.java) | Price for a given (plan, tier) pair, versioned by `effectiveFrom`/`effectiveTo` so price changes don't rewrite history. |
-| `BenefitDefinition` | [`membership/benefit/BenefitDefinition.java`](src/main/java/com/example/demo/membership/benefit/BenefitDefinition.java) | Catalog of benefit types (free delivery, discount %, early access, priority support, exclusive coupons). |
-| `BenefitCode` | [`membership/benefit/BenefitCode.java`](src/main/java/com/example/demo/membership/benefit/BenefitCode.java) | Enum of supported benefit types backing `BenefitDefinition`. |
+| `BenefitDefinition` | [`membership/benefit/BenefitDefinition.java`](src/main/java/com/example/demo/membership/benefit/BenefitDefinition.java) | Catalog of benefit types (free delivery, discount %, early access, priority support, exclusive coupons, or any admin-defined type). `code` is a free-form string, not a fixed enum, so new benefit types can be added at runtime via the Admin screen. |
 | `TierBenefit` | [`membership/benefit/TierBenefit.java`](src/main/java/com/example/demo/membership/benefit/TierBenefit.java) | Grants a `BenefitDefinition` to a `MembershipTier`, configured via a plain string value (e.g. discount percent). |
 | `Subscription` | [`subscription/Subscription.java`](src/main/java/com/example/demo/subscription/Subscription.java) | A user's current/past membership: which plan + tier, lifecycle status, and validity window. At most one `ACTIVE` row per user is enforced at the DB level. |
 | `SubscriptionStatus` | [`subscription/SubscriptionStatus.java`](src/main/java/com/example/demo/subscription/SubscriptionStatus.java) | Enum of subscription lifecycle states: `ACTIVE`, `CANCELLED`, `EXPIRED`, `PENDING`. |
 
-Service layer: `CatalogService` (read-only plan/tier/pricing access) and `SubscriptionService` (subscribe/change/cancel/get-current) in [`membership/`](src/main/java/com/example/demo/membership/) and [`subscription/`](src/main/java/com/example/demo/subscription/), backed by Spring Data repositories per entity. Domain errors (409 already-subscribed, 404 not-found, 400 invalid request) are mapped centrally by [`GlobalExceptionHandler`](src/main/java/com/example/demo/common/exception/GlobalExceptionHandler.java).
+Service layer: `CatalogService` (read-only plan/tier/pricing access) and `SubscriptionService` (subscribe/change/cancel/get-current) in [`membership/`](src/main/java/com/example/demo/membership/) and [`subscription/`](src/main/java/com/example/demo/subscription/), backed by Spring Data repositories per entity. `AdminBenefitService` and `AdminTierCriteriaService` in [`membership/admin/`](src/main/java/com/example/demo/membership/admin/) provide the write side (CRUD) for the benefit catalog and tier criteria, kept separate from the read-only `CatalogService`. Domain errors (409 already-subscribed/duplicate, 404 not-found, 400 invalid request) are mapped centrally by [`GlobalExceptionHandler`](src/main/java/com/example/demo/common/exception/GlobalExceptionHandler.java).
 
 ---
 
@@ -107,6 +117,7 @@ A React + TypeScript SPA (Vite) that talks to the backend REST API — plan/tier
 ## Technical Specifications
 * **Build tool:** Vite
 * **Framework:** React 19 + TypeScript
+* **Styling:** Tailwind CSS 4 (via `@tailwindcss/vite`)
 * **Data fetching:** plain `fetch` via a small typed API client (no external state/data library)
 
 ## Running the frontend
@@ -121,12 +132,14 @@ Starts on `http://localhost:5173`. The dev server proxies `/api/*` requests to t
 
 | Path | Purpose |
 |---|---|
-| [`src/api/`](frontend/src/api/) | Typed fetch client (`client.ts`) plus one module per API area (`catalog.ts`, `subscription.ts`) |
+| [`src/api/`](frontend/src/api/) | Typed fetch client (`client.ts`) plus one module per API area (`catalog.ts`, `subscription.ts`, `admin.ts`) |
 | [`src/types/`](frontend/src/types/) | TypeScript interfaces mirroring the backend DTOs |
 | [`src/pages/PlansPage.tsx`](frontend/src/pages/PlansPage.tsx) | Browse plans/tiers/pricing and subscribe |
 | [`src/pages/MyMembershipPage.tsx`](frontend/src/pages/MyMembershipPage.tsx) | View current membership; upgrade/downgrade tier, switch plan, or cancel |
+| [`src/pages/AdminPage.tsx`](frontend/src/pages/AdminPage.tsx) | Admin screen: configure benefit definitions, tier benefits, and tier criteria |
 | [`src/components/`](frontend/src/components/) | `PlanTierPicker` (plan × tier price grid), `TierBenefitsList`, `SubscriptionCard`, `StatusBadge` |
+| [`src/components/admin/`](frontend/src/components/admin/) | `BenefitDefinitionsPanel` (create benefit types), `TierBenefitsPanel` (assign benefits to tiers with a config value, e.g. discount %), `TierCriteriaPanel` (assign auto-qualification rules to tiers) — each with inline edit and an active/inactive toggle |
 | [`src/hooks/useCurrentUser.ts`](frontend/src/hooks/useCurrentUser.ts) | Demo stand-in for auth — holds the active user id (defaults to the seeded demo user, id `1`) |
-| [`src/App.tsx`](frontend/src/App.tsx) | App shell: tab navigation between the two pages, user-id selector |
+| [`src/App.tsx`](frontend/src/App.tsx) | App shell: tab navigation between My Membership / Plans & Tiers / Admin, user-id selector |
 
-No authentication or routing library — this is a two-tab demo SPA, not a production app shell.
+No authentication or routing library — this is a demo SPA with tab navigation, not a production app shell. The Admin tab is an open route (no access control), consistent with the rest of the demo.
