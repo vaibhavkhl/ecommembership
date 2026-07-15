@@ -143,3 +143,30 @@ Starts on `http://localhost:5173`. The dev server proxies `/api/*` requests to t
 | [`src/App.tsx`](frontend/src/App.tsx) | App shell: tab navigation between My Membership / Plans & Tiers / Admin, user-id selector |
 
 No authentication or routing library — this is a demo SPA with tab navigation, not a production app shell. The Admin tab is an open route (no access control), consistent with the rest of the demo.
+
+---
+
+# Deployment (Railway)
+
+Deployed as a **single service**: the backend serves the built frontend as static resources, so there's one URL, one process, and no CORS to configure in production.
+
+## Build
+
+Railway detects the root [`Dockerfile`](Dockerfile) and uses it automatically instead of its default builder (Railpack). Three stages:
+1. `node:22-alpine` — installs and builds the frontend (`frontend/dist`).
+2. `eclipse-temurin:25-jdk` — copies `frontend/dist` into `src/main/resources/static`, then runs `./gradlew bootJar`.
+3. `eclipse-temurin:25-jre` — copies just the built jar in; this is the image that actually runs.
+
+[.dockerignore](.dockerignore) keeps `node_modules`, `build/`, `.gradle/`, etc. out of the build context.
+
+## Configuration
+
+[application.yaml](src/main/resources/application.yaml) reads the datasource and port from environment variables, falling back to local defaults so nothing changes for `./gradlew bootRun`:
+* `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` — Postgres connection.
+* `PORT` — the port Spring Boot listens on; Railway assigns this automatically per service.
+
+Liquibase runs its migrations and seed data automatically on boot against whichever database those variables point to.
+
+## A freshly-deployed database starts empty of subscriptions
+
+The seed data (plans, tiers, benefits, pricing, the demo user) is inserted by Liquibase on every environment's first boot — but `Subscription` rows are created only by real user actions (`POST /api/users/{userId}/subscription`). 
