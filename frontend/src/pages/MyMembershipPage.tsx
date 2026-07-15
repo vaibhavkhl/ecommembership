@@ -65,20 +65,26 @@ export function MyMembershipPage({ userId, refreshKey }: { userId: number; refre
     }
   }
 
-  if (loading) return <p>Loading membership...</p>
+  if (loading) return <p className="text-slate-500 dark:text-slate-400">Loading membership...</p>
 
   return (
-    <section>
-      <h2>My Membership</h2>
-      {error && <p style={{ color: '#cf222e' }}>{error}</p>}
+    <section className="space-y-8">
+      <div>
+        <h2 className="mb-3 text-xl font-semibold text-slate-900 dark:text-slate-100">My Membership</h2>
+        {error && <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-      {!subscription && <p>You don't have a membership yet. Head to Plans & Tiers to subscribe.</p>}
+        {!subscription && (
+          <p className="text-slate-600 dark:text-slate-400">
+            You don&apos;t have a membership yet. Head to Plans &amp; Tiers to subscribe.
+          </p>
+        )}
 
-      {subscription && <SubscriptionCard subscription={subscription} onCancel={handleCancel} />}
+        {subscription && <SubscriptionCard subscription={subscription} onCancel={handleCancel} />}
+      </div>
 
       {subscription?.status === 'ACTIVE' && (
-        <>
-          <h3 style={{ marginTop: 24 }}>Change plan or tier</h3>
+        <div>
+          <h3 className="mb-3 text-lg font-semibold text-slate-900 dark:text-slate-100">Change plan or tier</h3>
           <PlanTierPicker
             plans={plans}
             tiers={tiers}
@@ -87,7 +93,7 @@ export function MyMembershipPage({ userId, refreshKey }: { userId: number; refre
             disabledCell={(planId, tierId) => planId === subscription.plan.id && tierId === subscription.tier.id}
             onSelect={handleChange}
           />
-        </>
+        </div>
       )}
     </section>
   )

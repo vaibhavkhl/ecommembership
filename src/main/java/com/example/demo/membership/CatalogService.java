@@ -1,6 +1,8 @@
 package com.example.demo.membership;
 
 import com.example.demo.common.exception.ResourceNotFoundException;
+import com.example.demo.membership.benefit.BenefitDefinition;
+import com.example.demo.membership.benefit.BenefitDefinitionRepository;
 import com.example.demo.membership.benefit.TierBenefit;
 import com.example.demo.membership.benefit.TierBenefitRepository;
 import com.example.demo.membership.dto.BenefitResponse;
@@ -33,6 +35,7 @@ public class CatalogService {
     private final MembershipTierRepository tierRepository;
     private final TierBenefitRepository tierBenefitRepository;
     private final PlanTierPricingRepository pricingRepository;
+    private final BenefitDefinitionRepository benefitDefinitionRepository;
 
     public List<PlanResponse> listActivePlans() {
         return planRepository.findByActiveTrue().stream()
@@ -81,13 +84,18 @@ public class CatalogService {
                 .orElseThrow(() -> new ResourceNotFoundException("Tier not found: " + tierId));
     }
 
+    public BenefitDefinition getBenefitDefinition(Long benefitId) {
+        return benefitDefinitionRepository.findById(benefitId)
+                .orElseThrow(() -> new ResourceNotFoundException("Benefit not found: " + benefitId));
+    }
+
     private PlanResponse toPlanResponse(MembershipPlan plan) {
         return new PlanResponse(plan.getId(), plan.getCode().name(), plan.getDurationDays());
     }
 
     private BenefitResponse toBenefitResponse(TierBenefit tierBenefit) {
         return new BenefitResponse(
-                tierBenefit.getBenefit().getCode().name(),
+                tierBenefit.getBenefit().getCode(),
                 tierBenefit.getBenefit().getDescription(),
                 tierBenefit.getConfigValue());
     }

@@ -2,8 +2,6 @@ package com.example.demo.membership.benefit;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -14,6 +12,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Catalog of benefit types. code is a free-form string (not an enum) so an admin can define new
+ * benefit types at runtime without a code change - e.g. "FREE_DELIVERY", "DISCOUNT_PERCENT".
+ */
 @Entity
 @Table(name = "benefit_definition")
 @Getter
@@ -27,9 +29,8 @@ public class BenefitDefinition {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, unique = true)
-    private BenefitCode code;
+    private String code;
 
     private String description;
 }

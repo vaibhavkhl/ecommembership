@@ -34,21 +34,27 @@ export function PlansPage({ userId, onSubscribed }: { userId: number; onSubscrib
     }
   }
 
-  if (loading) return <p>Loading plans...</p>
+  if (loading) return <p className="text-slate-500 dark:text-slate-400">Loading plans...</p>
 
   return (
-    <section>
-      <h2>Plans & Tiers</h2>
-      {error && <p style={{ color: '#cf222e' }}>{error}</p>}
-      <PlanTierPicker plans={plans} tiers={tiers} pricing={pricing} actionLabel="Subscribe" onSelect={handleSubscribe} />
+    <section className="space-y-8">
+      <div>
+        <h2 className="mb-3 text-xl font-semibold text-slate-900 dark:text-slate-100">Plans &amp; Tiers</h2>
+        {error && <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
+        <PlanTierPicker plans={plans} tiers={tiers} pricing={pricing} actionLabel="Subscribe" onSelect={handleSubscribe} />
+      </div>
 
-      <h3>Tier benefits</h3>
-      {tiers.map((tier) => (
-        <div key={tier.id} style={{ marginBottom: 12 }}>
-          <strong>{tier.code}</strong>
-          <TierBenefitsList benefits={tier.benefits} />
+      <div>
+        <h3 className="mb-3 text-lg font-semibold text-slate-900 dark:text-slate-100">Tier benefits</h3>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {tiers.map((tier) => (
+            <div key={tier.id} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+              <p className="mb-2 font-semibold text-slate-900 dark:text-slate-100">{tier.code}</p>
+              <TierBenefitsList benefits={tier.benefits} />
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
     </section>
   )
 }
