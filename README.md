@@ -50,3 +50,25 @@ A high-performance, modern REST API starter built using Spring Boot 4, Java 25 (
   * *Purpose:* Verifies health check formatting configurations and metrics under automation constraints.
 * **`junit-platform-launcher`** (`testRuntimeOnly`)
   * *Purpose:* Essential structural hook for build processes and IDEs to systematically discover and run JUnit 5 test cases.
+
+---
+
+## Membership Domain — Core Entities
+
+Schema lives in [`src/main/resources/db/changelog/changes/001-create-membership-schema.sql`](src/main/resources/db/changelog/changes/001-create-membership-schema.sql), applied via Liquibase.
+
+| Entity | Path | Description |
+|---|---|---|
+| `AppUser` | [`user/AppUser.java`](src/main/java/com/example/demo/user/AppUser.java) | A registered user; carries the `cohortCode` used by cohort-based tier criteria. |
+| `MembershipPlan` | [`membership/plan/MembershipPlan.java`](src/main/java/com/example/demo/membership/plan/MembershipPlan.java) | A billing cadence (Monthly/Quarterly/Yearly) with its duration in days. |
+| `PlanCode` | [`membership/plan/PlanCode.java`](src/main/java/com/example/demo/membership/plan/PlanCode.java) | Enum of supported plan cadences: `MONTHLY`, `QUARTERLY`, `YEARLY`. |
+| `MembershipTier` | [`membership/tier/MembershipTier.java`](src/main/java/com/example/demo/membership/tier/MembershipTier.java) | A benefit level (Silver/Gold/Platinum) with a numeric `rank` for upgrade/downgrade comparisons. |
+| `TierCode` | [`membership/tier/TierCode.java`](src/main/java/com/example/demo/membership/tier/TierCode.java) | Enum of supported tiers: `SILVER`, `GOLD`, `PLATINUM`. |
+| `TierCriteria` | [`membership/tier/TierCriteria.java`](src/main/java/com/example/demo/membership/tier/TierCriteria.java) | A configurable rule (order count, monthly order value, cohort) a user must meet to auto-qualify for a tier. |
+| `CriteriaType` | [`membership/tier/CriteriaType.java`](src/main/java/com/example/demo/membership/tier/CriteriaType.java) | Enum of rule kinds a `TierCriteria` row can express: `MIN_ORDER_COUNT`, `MIN_ORDER_VALUE_MONTHLY`, `COHORT`. |
+| `PlanTierPricing` | [`membership/pricing/PlanTierPricing.java`](src/main/java/com/example/demo/membership/pricing/PlanTierPricing.java) | Price for a given (plan, tier) pair, versioned by `effectiveFrom`/`effectiveTo` so price changes don't rewrite history. |
+| `BenefitDefinition` | [`membership/benefit/BenefitDefinition.java`](src/main/java/com/example/demo/membership/benefit/BenefitDefinition.java) | Catalog of benefit types (free delivery, discount %, early access, priority support, exclusive coupons). |
+| `BenefitCode` | [`membership/benefit/BenefitCode.java`](src/main/java/com/example/demo/membership/benefit/BenefitCode.java) | Enum of supported benefit types backing `BenefitDefinition`. |
+| `TierBenefit` | [`membership/benefit/TierBenefit.java`](src/main/java/com/example/demo/membership/benefit/TierBenefit.java) | Grants a `BenefitDefinition` to a `MembershipTier`, configured via a plain string value (e.g. discount percent). |
+| `Subscription` | [`subscription/Subscription.java`](src/main/java/com/example/demo/subscription/Subscription.java) | A user's current/past membership: which plan + tier, lifecycle status, and validity window. At most one `ACTIVE` row per user is enforced at the DB level. |
+| `SubscriptionStatus` | [`subscription/SubscriptionStatus.java`](src/main/java/com/example/demo/subscription/SubscriptionStatus.java) | Enum of subscription lifecycle states: `ACTIVE`, `CANCELLED`, `EXPIRED`, `PENDING`. |

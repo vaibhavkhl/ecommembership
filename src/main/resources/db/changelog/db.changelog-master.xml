@@ -6,5 +6,6 @@
         http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.5.xsd">
 
     <include file="db/changelog/changes/001-create-membership-schema.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/002-seed-membership-data.sql" relativeToChangelogFile="false"/>
 
 </databaseChangeLog>
