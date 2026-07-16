@@ -16,3 +16,10 @@ spring:
 # Railway assigns the listen port via $PORT; defaults to 8080 locally.
 server:
   port: ${PORT:8080}
+
+# Comma-separated list. Set APP_CORS_ALLOWED_ORIGINS in production to the deployed URL(s) -
+# Spring's CORS filter validates the browser's Origin header against this list even for
+# same-origin requests, so it must include wherever the frontend is actually served from.
+app:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173}
