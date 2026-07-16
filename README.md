@@ -71,10 +71,11 @@ Starts on `http://localhost:8080`. Liquibase applies the schema and seed data au
 **Subscription** (`{userId}` — demo user seeded with id `1`)
 | Method | URL | Description |
 |---|---|---|
-| GET | `/api/users/{userId}/subscription` | Current/latest membership |
-| POST | `/api/users/{userId}/subscription` | Subscribe (plan + tier) |
-| PATCH | `/api/users/{userId}/subscription` | Upgrade/downgrade tier and/or switch plan |
+| GET | `/api/users/{userId}/subscription` | Current/latest membership, including `pricePaid`/`currency` |
+| POST | `/api/users/{userId}/subscription` | Subscribe (plan + tier) at current pricing |
+| PATCH | `/api/users/{userId}/subscription` | Upgrade/downgrade tier and/or switch plan, re-priced at current pricing |
 | DELETE | `/api/users/{userId}/subscription` | Cancel (access continues until `endDate`) |
+| GET | `/api/users/{userId}/subscription/events` | Full lifecycle history (subscribe/upgrade/downgrade/plan-change/cancel), newest first |
 
 **Admin** (configure the benefit catalog and tier auto-qualification rules)
 | Method | URL | Description |
@@ -90,7 +91,7 @@ Starts on `http://localhost:8080`. Liquibase applies the schema and seed data au
 
 ## Membership Domain — Core Entities
 
-Schema lives in [`src/main/resources/db/changelog/changes/001-create-membership-schema.sql`](src/main/resources/db/changelog/changes/001-create-membership-schema.sql), seed data in [`002-seed-membership-data.sql`](src/main/resources/db/changelog/changes/002-seed-membership-data.sql), both applied via Liquibase.
+Schema lives in [`src/main/resources/db/changelog/changes/001-create-membership-schema.sql`](src/main/resources/db/changelog/changes/001-create-membership-schema.sql), seed data in [`002-seed-membership-data.sql`](src/main/resources/db/changelog/changes/002-seed-membership-data.sql), subscription pricing/history in [`003-add-subscription-pricing-and-events.sql`](src/main/resources/db/changelog/changes/003-add-subscription-pricing-and-events.sql) — all applied via Liquibase.
 
 | Entity | Path | Description |
 |---|---|---|
@@ -103,10 +104,12 @@ Schema lives in [`src/main/resources/db/changelog/changes/001-create-membership-
 | `PlanTierPricing` | [`membership/pricing/PlanTierPricing.java`](src/main/java/com/example/demo/membership/pricing/PlanTierPricing.java) | Price for a given (plan, tier) pair, versioned by `effectiveFrom`/`effectiveTo` so price changes don't rewrite history. |
 | `BenefitDefinition` | [`membership/benefit/BenefitDefinition.java`](src/main/java/com/example/demo/membership/benefit/BenefitDefinition.java) | Catalog of benefit types (free delivery, discount %, early access, priority support, exclusive coupons, or any admin-defined type). `code` is a free-form string, not a fixed enum, so new benefit types can be added at runtime via the Admin screen. |
 | `TierBenefit` | [`membership/benefit/TierBenefit.java`](src/main/java/com/example/demo/membership/benefit/TierBenefit.java) | Grants a `BenefitDefinition` to a `MembershipTier`, configured via a plain string value (e.g. discount percent). |
-| `Subscription` | [`subscription/Subscription.java`](src/main/java/com/example/demo/subscription/Subscription.java) | A user's current/past membership: which plan + tier, lifecycle status, and validity window. At most one `ACTIVE` row per user is enforced at the DB level. |
+| `Subscription` | [`subscription/Subscription.java`](src/main/java/com/example/demo/subscription/Subscription.java) | A user's current/past membership: which plan + tier, lifecycle status, validity window, and a `pricePaid`/`currency` snapshot of what was actually charged. At most one `ACTIVE` row per user is enforced at the DB level. |
 | `SubscriptionStatus` | [`subscription/SubscriptionStatus.java`](src/main/java/com/example/demo/subscription/SubscriptionStatus.java) | Enum of subscription lifecycle states: `ACTIVE`, `CANCELLED`, `EXPIRED`, `PENDING`. |
+| `SubscriptionEvent` | [`subscription/SubscriptionEvent.java`](src/main/java/com/example/demo/subscription/SubscriptionEvent.java) | Append-only audit trail: one row per lifecycle transition, capturing from/to plan and tier plus the price at that moment. `Subscription` only reflects current state; this is the history. |
+| `SubscriptionEventType` | [`subscription/SubscriptionEventType.java`](src/main/java/com/example/demo/subscription/SubscriptionEventType.java) | Enum of transition kinds: `SUBSCRIBED`, `UPGRADED`, `DOWNGRADED`, `PLAN_CHANGED`, `CANCELLED`. Upgrade vs. downgrade is derived by comparing `MembershipTier.rank`. |
 
-Service layer: `CatalogService` (read-only plan/tier/pricing access) and `SubscriptionService` (subscribe/change/cancel/get-current) in [`membership/`](src/main/java/com/example/demo/membership/) and [`subscription/`](src/main/java/com/example/demo/subscription/), backed by Spring Data repositories per entity. `AdminBenefitService` and `AdminTierCriteriaService` in [`membership/admin/`](src/main/java/com/example/demo/membership/admin/) provide the write side (CRUD) for the benefit catalog and tier criteria, kept separate from the read-only `CatalogService`. Domain errors (409 already-subscribed/duplicate, 404 not-found, 400 invalid request) are mapped centrally by [`GlobalExceptionHandler`](src/main/java/com/example/demo/common/exception/GlobalExceptionHandler.java).
+Service layer: `CatalogService` (read-only plan/tier/pricing access) and `SubscriptionService` (subscribe/change/cancel/get-current/get-events) in [`membership/`](src/main/java/com/example/demo/membership/) and [`subscription/`](src/main/java/com/example/demo/subscription/), backed by Spring Data repositories per entity. Every subscribe/change/cancel call both updates the `Subscription` row and writes a `SubscriptionEvent`, in the same transaction, snapshotting the price from `PlanTierPricing` at that moment so later catalog price edits can't retroactively change what history shows a user paid. `AdminBenefitService` and `AdminTierCriteriaService` in [`membership/admin/`](src/main/java/com/example/demo/membership/admin/) provide the write side (CRUD) for the benefit catalog and tier criteria, kept separate from the read-only `CatalogService`. Domain errors (409 already-subscribed/duplicate, 404 not-found, 400 invalid request) are mapped centrally by [`GlobalExceptionHandler`](src/main/java/com/example/demo/common/exception/GlobalExceptionHandler.java).
 
 ---
 
@@ -137,7 +140,7 @@ Starts on `http://localhost:5173`. The dev server proxies `/api/*` requests to t
 | [`src/pages/PlansPage.tsx`](frontend/src/pages/PlansPage.tsx) | Browse plans/tiers/pricing and subscribe |
 | [`src/pages/MyMembershipPage.tsx`](frontend/src/pages/MyMembershipPage.tsx) | View current membership; upgrade/downgrade tier, switch plan, or cancel |
 | [`src/pages/AdminPage.tsx`](frontend/src/pages/AdminPage.tsx) | Admin screen: configure benefit definitions, tier benefits, and tier criteria |
-| [`src/components/`](frontend/src/components/) | `PlanTierPicker` (plan × tier price grid), `TierBenefitsList`, `SubscriptionCard`, `StatusBadge` |
+| [`src/components/`](frontend/src/components/) | `PlanTierPicker` (plan × tier price grid), `TierBenefitsList`, `SubscriptionCard` (shows price paid), `SubscriptionHistory` (upgrade/downgrade/plan-change/cancel timeline), `StatusBadge` |
 | [`src/components/admin/`](frontend/src/components/admin/) | `BenefitDefinitionsPanel` (create benefit types), `TierBenefitsPanel` (assign benefits to tiers with a config value, e.g. discount %), `TierCriteriaPanel` (assign auto-qualification rules to tiers) — each with inline edit and an active/inactive toggle |
 | [`src/hooks/useCurrentUser.ts`](frontend/src/hooks/useCurrentUser.ts) | Demo stand-in for auth — holds the active user id (defaults to the seeded demo user, id `1`) |
 | [`src/App.tsx`](frontend/src/App.tsx) | App shell: tab navigation between My Membership / Plans & Tiers / Admin, user-id selector |

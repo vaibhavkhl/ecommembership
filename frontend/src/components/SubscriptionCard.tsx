@@ -11,6 +11,14 @@ export function SubscriptionCard({ subscription, onCancel }: { subscription: Sub
         <StatusBadge status={subscription.status} />
       </div>
       <dl className="mt-3 space-y-1 text-sm text-slate-600 dark:text-slate-400">
+        {subscription.pricePaid != null && (
+          <div className="flex justify-between">
+            <dt>Price paid</dt>
+            <dd className="font-medium text-slate-900 dark:text-slate-100">
+              {subscription.currency} {subscription.pricePaid}
+            </dd>
+          </div>
+        )}
         <div className="flex justify-between">
           <dt>Start</dt>
           <dd>{new Date(subscription.startDate).toLocaleString()}</dd>

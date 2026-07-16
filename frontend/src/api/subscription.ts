@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { Subscription } from '../types/subscription'
+import type { Subscription, SubscriptionEvent } from '../types/subscription'
 
 export const subscriptionApi = {
   getCurrent: (userId: number) => apiClient.get<Subscription>(`/users/${userId}/subscription`),
@@ -8,4 +8,5 @@ export const subscriptionApi = {
   change: (userId: number, planId?: number, tierId?: number) =>
     apiClient.patch<Subscription>(`/users/${userId}/subscription`, { planId, tierId }),
   cancel: (userId: number) => apiClient.delete<Subscription>(`/users/${userId}/subscription`),
+  getEvents: (userId: number) => apiClient.get<SubscriptionEvent[]>(`/users/${userId}/subscription/events`),
 }

@@ -7,5 +7,6 @@
 
     <include file="db/changelog/changes/001-create-membership-schema.sql" relativeToChangelogFile="false"/>
     <include file="db/changelog/changes/002-seed-membership-data.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/003-add-subscription-pricing-and-events.sql" relativeToChangelogFile="false"/>
 
 </databaseChangeLog>

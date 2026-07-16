@@ -2,8 +2,10 @@ package com.example.demo.subscription;
 
 import com.example.demo.subscription.dto.ChangeSubscriptionRequest;
 import com.example.demo.subscription.dto.SubscribeRequest;
+import com.example.demo.subscription.dto.SubscriptionEventResponse;
 import com.example.demo.subscription.dto.SubscriptionResponse;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -42,5 +44,10 @@ public class SubscriptionController {
     @DeleteMapping
     public SubscriptionResponse cancel(@PathVariable Long userId) {
         return subscriptionService.cancel(userId);
+    }
+
+    @GetMapping("/events")
+    public List<SubscriptionEventResponse> getEvents(@PathVariable Long userId) {
+        return subscriptionService.getEvents(userId);
     }
 }

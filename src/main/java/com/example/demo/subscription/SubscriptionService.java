@@ -6,16 +6,20 @@ import com.example.demo.common.exception.NoActiveSubscriptionException;
 import com.example.demo.common.exception.ResourceNotFoundException;
 import com.example.demo.membership.CatalogService;
 import com.example.demo.membership.plan.MembershipPlan;
+import com.example.demo.membership.pricing.PlanTierPricing;
 import com.example.demo.membership.tier.MembershipTier;
 import com.example.demo.subscription.dto.ChangeSubscriptionRequest;
 import com.example.demo.subscription.dto.PlanSummary;
 import com.example.demo.subscription.dto.SubscribeRequest;
+import com.example.demo.subscription.dto.SubscriptionEventResponse;
 import com.example.demo.subscription.dto.SubscriptionResponse;
 import com.example.demo.subscription.dto.TierSummary;
 import com.example.demo.user.AppUser;
 import com.example.demo.user.AppUserRepository;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +30,10 @@ import org.springframework.transaction.annotation.Transactional;
  * from now using the new plan's duration; a tier-only change keeps the existing window. Cancel
  * is "at period end": status flips to CANCELLED immediately but endDate is left untouched, so
  * the member keeps access until it naturally lapses.
+ *
+ * Every transition also writes a {@link SubscriptionEvent} - an immutable history of what
+ * changed and what was charged, independent of the current state on {@link Subscription} itself
+ * and independent of later edits to {@link PlanTierPricing}.
  */
 @Service
 @RequiredArgsConstructor
@@ -33,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SubscriptionService {
 
     private final SubscriptionRepository subscriptionRepository;
+    private final SubscriptionEventRepository subscriptionEventRepository;
     private final AppUserRepository userRepository;
     private final CatalogService catalogService;
 
@@ -42,6 +51,14 @@ public class SubscriptionService {
                 .orElseThrow(() -> new NoActiveSubscriptionException(
                         "User " + userId + " has no subscription"));
         return toResponse(subscription);
+    }
+
+    @Transactional(readOnly = true)
+    public List<SubscriptionEventResponse> getEvents(Long userId) {
+        getUserOrThrow(userId);
+        return subscriptionEventRepository.findBySubscription_User_IdOrderByCreatedAtDesc(userId).stream()
+                .map(this::toEventResponse)
+                .toList();
     }
 
     public SubscriptionResponse subscribe(Long userId, SubscribeRequest request) {
@@ -55,6 +72,7 @@ public class SubscriptionService {
 
         MembershipPlan plan = catalogService.getPlan(request.planId());
         MembershipTier tier = catalogService.getTier(request.tierId());
+        PlanTierPricing pricing = catalogService.getCurrentPricing(plan.getId(), tier.getId());
 
         Instant now = Instant.now();
         Subscription subscription = Subscription.builder()
@@ -65,11 +83,17 @@ public class SubscriptionService {
                 .startDate(now)
                 .endDate(now.plus(plan.getDurationDays(), ChronoUnit.DAYS))
                 .autoRenew(false)
+                .pricePaid(pricing.getPrice())
+                .currency(pricing.getCurrency())
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
+        subscription = subscriptionRepository.save(subscription);
 
-        return toResponse(subscriptionRepository.save(subscription));
+        recordEvent(SubscriptionEventType.SUBSCRIBED, subscription, null, plan, null, tier,
+                pricing.getPrice(), pricing.getCurrency(), now);
+
+        return toResponse(subscription);
     }
 
     public SubscriptionResponse change(Long userId, ChangeSubscriptionRequest request) {
@@ -78,28 +102,77 @@ public class SubscriptionService {
         }
 
         Subscription subscription = findActiveOrThrow(userId);
-        Instant now = Instant.now();
+        MembershipPlan oldPlan = subscription.getPlan();
+        MembershipTier oldTier = subscription.getTier();
 
-        if (request.tierId() != null) {
-            subscription.setTier(catalogService.getTier(request.tierId()));
+        MembershipPlan newPlan = request.planId() != null ? catalogService.getPlan(request.planId()) : oldPlan;
+        MembershipTier newTier = request.tierId() != null ? catalogService.getTier(request.tierId()) : oldTier;
+
+        boolean planChanged = !newPlan.getId().equals(oldPlan.getId());
+        boolean tierChanged = !newTier.getId().equals(oldTier.getId());
+        if (!planChanged && !tierChanged) {
+            throw new InvalidRequestException("Requested plan and tier match the current subscription");
         }
 
-        if (request.planId() != null) {
-            MembershipPlan newPlan = catalogService.getPlan(request.planId());
-            subscription.setPlan(newPlan);
+        PlanTierPricing pricing = catalogService.getCurrentPricing(newPlan.getId(), newTier.getId());
+        Instant now = Instant.now();
+
+        subscription.setPlan(newPlan);
+        subscription.setTier(newTier);
+        subscription.setPricePaid(pricing.getPrice());
+        subscription.setCurrency(pricing.getCurrency());
+        if (planChanged) {
             subscription.setStartDate(now);
             subscription.setEndDate(now.plus(newPlan.getDurationDays(), ChronoUnit.DAYS));
         }
-
         subscription.setUpdatedAt(now);
-        return toResponse(subscriptionRepository.save(subscription));
+        subscription = subscriptionRepository.save(subscription);
+
+        SubscriptionEventType eventType = tierChanged
+                ? (newTier.getRank() > oldTier.getRank() ? SubscriptionEventType.UPGRADED : SubscriptionEventType.DOWNGRADED)
+                : SubscriptionEventType.PLAN_CHANGED;
+        recordEvent(eventType, subscription, oldPlan, newPlan, oldTier, newTier,
+                pricing.getPrice(), pricing.getCurrency(), now);
+
+        return toResponse(subscription);
     }
 
     public SubscriptionResponse cancel(Long userId) {
         Subscription subscription = findActiveOrThrow(userId);
+        Instant now = Instant.now();
         subscription.setStatus(SubscriptionStatus.CANCELLED);
-        subscription.setUpdatedAt(Instant.now());
-        return toResponse(subscriptionRepository.save(subscription));
+        subscription.setUpdatedAt(now);
+        subscription = subscriptionRepository.save(subscription);
+
+        recordEvent(SubscriptionEventType.CANCELLED, subscription,
+                subscription.getPlan(), subscription.getPlan(),
+                subscription.getTier(), subscription.getTier(),
+                null, null, now);
+
+        return toResponse(subscription);
+    }
+
+    private void recordEvent(
+            SubscriptionEventType eventType,
+            Subscription subscription,
+            MembershipPlan fromPlan,
+            MembershipPlan toPlan,
+            MembershipTier fromTier,
+            MembershipTier toTier,
+            BigDecimal pricePaid,
+            String currency,
+            Instant now) {
+        subscriptionEventRepository.save(SubscriptionEvent.builder()
+                .subscription(subscription)
+                .eventType(eventType)
+                .fromPlan(fromPlan)
+                .toPlan(toPlan)
+                .fromTier(fromTier)
+                .toTier(toTier)
+                .pricePaid(pricePaid)
+                .currency(currency)
+                .createdAt(now)
+                .build());
     }
 
     private Subscription findActiveOrThrow(Long userId) {
@@ -126,6 +199,21 @@ public class SubscriptionService {
                 subscription.getStartDate(),
                 subscription.getEndDate(),
                 subscription.getAutoRenew(),
-                subscription.getEndDate().isBefore(Instant.now()));
+                subscription.getEndDate().isBefore(Instant.now()),
+                subscription.getPricePaid(),
+                subscription.getCurrency());
+    }
+
+    private SubscriptionEventResponse toEventResponse(SubscriptionEvent event) {
+        return new SubscriptionEventResponse(
+                event.getId(),
+                event.getEventType().name(),
+                event.getFromPlan() != null ? event.getFromPlan().getCode().name() : null,
+                event.getToPlan() != null ? event.getToPlan().getCode().name() : null,
+                event.getFromTier() != null ? event.getFromTier().getCode().name() : null,
+                event.getToTier() != null ? event.getToTier().getCode().name() : null,
+                event.getPricePaid(),
+                event.getCurrency(),
+                event.getCreatedAt());
     }
 }

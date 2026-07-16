@@ -14,6 +14,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -63,6 +64,16 @@ public class Subscription {
 
     @Column(name = "auto_renew", nullable = false)
     private Boolean autoRenew;
+
+    /**
+     * Snapshot of what was actually charged at the time of subscribe/change, independent of
+     * later edits to {@link com.example.demo.membership.pricing.PlanTierPricing}.
+     */
+    @Column(name = "price_paid", precision = 12, scale = 2)
+    private BigDecimal pricePaid;
+
+    @Column(length = 3)
+    private String currency;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

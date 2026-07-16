@@ -3,12 +3,14 @@ import { catalogApi } from '../api/catalog'
 import { subscriptionApi } from '../api/subscription'
 import { ApiError } from '../api/client'
 import type { Plan, Tier, Price } from '../types/catalog'
-import type { Subscription } from '../types/subscription'
+import type { Subscription, SubscriptionEvent } from '../types/subscription'
 import { SubscriptionCard } from '../components/SubscriptionCard'
 import { PlanTierPicker } from '../components/PlanTierPicker'
+import { SubscriptionHistory } from '../components/SubscriptionHistory'
 
 export function MyMembershipPage({ userId, refreshKey }: { userId: number; refreshKey: number }) {
   const [subscription, setSubscription] = useState<Subscription | null>(null)
+  const [events, setEvents] = useState<SubscriptionEvent[]>([])
   const [plans, setPlans] = useState<Plan[]>([])
   const [tiers, setTiers] = useState<Tier[]>([])
   const [pricing, setPricing] = useState<Price[]>([])
@@ -30,6 +32,7 @@ export function MyMembershipPage({ userId, refreshKey }: { userId: number; refre
 
       const current = await subscriptionApi.getCurrent(userId)
       setSubscription(current)
+      setEvents(await subscriptionApi.getEvents(userId))
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setSubscription(null)
@@ -93,6 +96,13 @@ export function MyMembershipPage({ userId, refreshKey }: { userId: number; refre
             disabledCell={(planId, tierId) => planId === subscription.plan.id && tierId === subscription.tier.id}
             onSelect={handleChange}
           />
+        </div>
+      )}
+
+      {events.length > 0 && (
+        <div>
+          <h3 className="mb-3 text-lg font-semibold text-slate-900 dark:text-slate-100">History</h3>
+          <SubscriptionHistory events={events} />
         </div>
       )}
     </section>

@@ -21,4 +21,20 @@ export interface Subscription {
   endDate: string
   autoRenew: boolean
   expired: boolean
+  pricePaid: number | null
+  currency: string | null
+}
+
+export type SubscriptionEventType = 'SUBSCRIBED' | 'UPGRADED' | 'DOWNGRADED' | 'PLAN_CHANGED' | 'CANCELLED'
+
+export interface SubscriptionEvent {
+  id: number
+  eventType: SubscriptionEventType
+  fromPlanCode: string | null
+  toPlanCode: string | null
+  fromTierCode: string | null
+  toTierCode: string | null
+  pricePaid: number | null
+  currency: string | null
+  createdAt: string
 }

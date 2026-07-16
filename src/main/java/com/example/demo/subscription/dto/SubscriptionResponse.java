@@ -1,5 +1,6 @@
 package com.example.demo.subscription.dto;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 public record SubscriptionResponse(
@@ -11,6 +12,8 @@ public record SubscriptionResponse(
         Instant startDate,
         Instant endDate,
         boolean autoRenew,
-        boolean expired
+        boolean expired,
+        BigDecimal pricePaid,
+        String currency
 ) {
 }
